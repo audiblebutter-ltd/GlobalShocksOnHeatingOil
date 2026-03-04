@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 Dataset Inspector (local dev tool)
 
 Works with NDJSON files produced by this project.
