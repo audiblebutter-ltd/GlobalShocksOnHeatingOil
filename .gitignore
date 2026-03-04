@@ -14,3 +14,9 @@ data/sample/*.parquet
 
 # Generated lookup datasets
 data/lookups/
+
+# data sets
+data/sample/*.ndjson
+data/sample/*shocks*.csv
+reports/*.png
+reports/*.md
