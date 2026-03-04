@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import io
 import re
 import urllib.request
 from pathlib import Path
@@ -26,6 +25,20 @@ from pathlib import Path
 ONS_CPIH_CSV_URL = (
     "https://www.ons.gov.uk/generator?format=csv&uri=/economy/inflationandpriceindices/timeseries/l522/mm23"
 )
+
+# Rows at the top of the file are metadata like:
+# "Title","..."
+# "CDID","..."
+META_KEYS = {
+    "title",
+    "cdid",
+    "source dataset id",
+    "preunit",
+    "unit",
+    "release date",
+    "next release",
+    "important notes",
+}
 
 MONTHS = {
     "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04",
@@ -61,31 +74,11 @@ def to_yyyy_mm(period_str: str) -> str | None:
     return f"{year}-{mm}"
 
 
-def find_data_header_line_index(lines: list[str]) -> int:
-    """
-    ONS generator CSV starts with a metadata block like:
-      "Title","..."
-      "CDID","..."
-    Then later a proper table header appears, usually containing:
-      "Time period","Value"
-    We scan until we find that header row.
-    """
-    for i, line in enumerate(lines):
-        l = line.strip().strip("\ufeff")
-        if not l:
-            continue
-        norm = l.replace('"', "").strip().lower()
-        # must contain both 'time period' (or 'period') and 'value'
-        if ("time period" in norm or norm.startswith("period,")) and "value" in norm:
-            return i
-    return -1
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description="Fetch CPIH (L522) from ONS generator CSV")
     ap.add_argument("--output", default="data/lookups/cpih.csv", help="Output lookup CSV")
     ap.add_argument("--raw", default="data/lookups/ons_l522_raw.csv", help="Save raw download for debugging")
-    ap.add_argument("--show", type=int, default=8, help="Print first N lines of the raw download")
+    ap.add_argument("--show", type=int, default=12, help="Print first N lines of the raw download")
     args = ap.parse_args()
 
     out_path = Path(args.output)
@@ -100,43 +93,6 @@ def main() -> None:
     for l in lines[: args.show]:
         print(l)
 
-    header_line_idx = find_data_header_line_index(lines)
-    if header_line_idx < 0:
-        raise SystemExit(
-            "ERROR: Could not find the data table header row (expected 'Time period' and 'Value').\n"
-            f"Raw saved to: {raw_path}"
-        )
-
-    # Parse only the table section (skip metadata block)
-    table_text = "\n".join(lines[header_line_idx:])
-    f = io.StringIO(table_text)
-    reader = csv.reader(f)
-
-    try:
-        header = next(reader)
-    except StopIteration:
-        raise SystemExit("ERROR: ONS table section was empty (no header).")
-
-    header = [h.strip().strip('"') for h in header]
-    header_norm = [h.lower() for h in header]
-
-    def idx_of(*names: str) -> int:
-        for n in names:
-            n = n.lower()
-            if n in header_norm:
-                return header_norm.index(n)
-        return -1
-
-    period_idx = idx_of("time period", "period")
-    value_idx = idx_of("value")
-
-    if period_idx < 0 or value_idx < 0:
-        raise SystemExit(
-            "ERROR: Found table header but could not locate required columns.\n"
-            f"Header was: {header}\n"
-            f"Raw saved to: {raw_path}"
-        )
-
     rows_written = 0
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -144,26 +100,35 @@ def main() -> None:
         w = csv.writer(out_f)
         w.writerow(["period", "cpih_index"])
 
+        reader = csv.reader(lines)
         for row in reader:
-            if not row or len(row) <= max(period_idx, value_idx):
+            if not row or len(row) < 2:
                 continue
 
-            period_raw = row[period_idx].strip().strip('"')
-            value_raw = row[value_idx].strip().strip('"')
+            k = row[0].strip().strip('"')
+            v = row[1].strip().strip('"')
 
-            period = to_yyyy_mm(period_raw)
+            if not k:
+                continue
+
+            # Skip metadata rows
+            if k.lower() in META_KEYS:
+                continue
+
+            # Keep monthly only (YYYY MMM)
+            period = to_yyyy_mm(k)
             if period is None:
                 continue
 
-            if not value_raw or value_raw in (".", "-", "—"):
+            if not v or v in (".", "-", "—"):
                 continue
 
             try:
-                float(value_raw)
+                float(v)
             except ValueError:
                 continue
 
-            w.writerow([period, value_raw])
+            w.writerow([period, v])
             rows_written += 1
 
     print(f"OK: wrote {rows_written} CPIH rows to {out_path}")
