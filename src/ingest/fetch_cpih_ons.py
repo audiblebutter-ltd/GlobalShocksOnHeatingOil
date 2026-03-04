@@ -9,8 +9,8 @@ URL (no API key):
 https://www.ons.gov.uk/generator?format=csv&uri=/economy/inflationandpriceindices/timeseries/l522/mm23
 
 Output:
-data/lookups/cpih.csv  with columns:
-  period,cpih_index
+data/lookups/cpih.csv with columns:
+  period, cpih_index
 where period is YYYY-MM (monthly only).
 """
 
@@ -48,17 +48,8 @@ def save_raw(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
-def find_column(header: list[str], candidates: list[str]) -> int:
-    header_norm = [h.strip().lower() for h in header]
-    for c in candidates:
-        c_norm = c.strip().lower()
-        if c_norm in header_norm:
-            return header_norm.index(c_norm)
-    return -1
-
-
 def to_yyyy_mm(period_str: str) -> str | None:
-    s = period_str.strip()
+    s = period_str.strip().strip('"')
     m = MONTHLY_RE.match(s)
     if not m:
         return None
@@ -68,6 +59,26 @@ def to_yyyy_mm(period_str: str) -> str | None:
     if not mm:
         return None
     return f"{year}-{mm}"
+
+
+def find_data_header_line_index(lines: list[str]) -> int:
+    """
+    ONS generator CSV starts with a metadata block like:
+      "Title","..."
+      "CDID","..."
+    Then later a proper table header appears, usually containing:
+      "Time period","Value"
+    We scan until we find that header row.
+    """
+    for i, line in enumerate(lines):
+        l = line.strip().strip("\ufeff")
+        if not l:
+            continue
+        norm = l.replace('"', "").strip().lower()
+        # must contain both 'time period' (or 'period') and 'value'
+        if ("time period" in norm or norm.startswith("period,")) and "value" in norm:
+            return i
+    return -1
 
 
 def main() -> None:
@@ -89,24 +100,39 @@ def main() -> None:
     for l in lines[: args.show]:
         print(l)
 
-    # Parse CSV
-    f = io.StringIO(text)
+    header_line_idx = find_data_header_line_index(lines)
+    if header_line_idx < 0:
+        raise SystemExit(
+            "ERROR: Could not find the data table header row (expected 'Time period' and 'Value').\n"
+            f"Raw saved to: {raw_path}"
+        )
+
+    # Parse only the table section (skip metadata block)
+    table_text = "\n".join(lines[header_line_idx:])
+    f = io.StringIO(table_text)
     reader = csv.reader(f)
 
     try:
         header = next(reader)
     except StopIteration:
-        raise SystemExit("ERROR: ONS CSV was empty (no header).")
+        raise SystemExit("ERROR: ONS table section was empty (no header).")
 
-    header = [h.strip() for h in header]
+    header = [h.strip().strip('"') for h in header]
+    header_norm = [h.lower() for h in header]
 
-    # ONS generator CSV varies; common names:
-    period_idx = find_column(header, ["Period", "Time period", "Time Period"])
-    value_idx = find_column(header, ["Value", "value"])
+    def idx_of(*names: str) -> int:
+        for n in names:
+            n = n.lower()
+            if n in header_norm:
+                return header_norm.index(n)
+        return -1
+
+    period_idx = idx_of("time period", "period")
+    value_idx = idx_of("value")
 
     if period_idx < 0 or value_idx < 0:
         raise SystemExit(
-            "ERROR: Could not locate Period/Value columns in ONS CSV.\n"
+            "ERROR: Found table header but could not locate required columns.\n"
             f"Header was: {header}\n"
             f"Raw saved to: {raw_path}"
         )
@@ -122,10 +148,9 @@ def main() -> None:
             if not row or len(row) <= max(period_idx, value_idx):
                 continue
 
-            period_raw = row[period_idx].strip()
-            value_raw = row[value_idx].strip()
+            period_raw = row[period_idx].strip().strip('"')
+            value_raw = row[value_idx].strip().strip('"')
 
-            # Keep monthly only (YYYY MMM)
             period = to_yyyy_mm(period_raw)
             if period is None:
                 continue
