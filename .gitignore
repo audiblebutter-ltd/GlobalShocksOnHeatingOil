@@ -1,0 +1,13 @@
+# Raw datasets
+data/raw/
+
+# CSV files
+*.csv
+
+# Raw / downloaded datasets (never commit)
+data/raw/
+
+# Generated outputs (never commit)
+data/sample/*.ndjson
+data/sample/*.json
+data/sample/*.parquet
