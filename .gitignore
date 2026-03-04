@@ -11,3 +11,6 @@ data/raw/
 data/sample/*.ndjson
 data/sample/*.json
 data/sample/*.parquet
+
+# Generated lookup datasets
+data/lookups/

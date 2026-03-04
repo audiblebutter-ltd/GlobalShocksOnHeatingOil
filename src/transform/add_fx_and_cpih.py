@@ -23,7 +23,6 @@ import argparse
 import csv
 import json
 from bisect import bisect_right
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Any, Optional
 
@@ -79,7 +78,6 @@ def fx_for_date_or_prev(dates_sorted: List[str], fx: Dict[str, float], target_da
     if target_date in fx:
         return fx[target_date]
 
-    # bisect to find insertion point
     i = bisect_right(dates_sorted, target_date) - 1
     if i < 0:
         return None
@@ -143,7 +141,6 @@ def main() -> None:
     base_cpih = cpih[base_period]
 
     out_rows: List[Dict[str, Any]] = []
-
     missing_fx = 0
     missing_cpih = 0
 
@@ -151,6 +148,9 @@ def main() -> None:
         d = r.get("date")
         if not isinstance(d, str) or len(d) != 10:
             continue
+
+        # Month bucket for BOTH oil + CPIH joins
+        period = month_key(d)
 
         # We use wholesale proxy from Stage 2 (USD per litre)
         usd_per_litre = r.get("derived", {}).get("usd_per_litre_wholesale_proxy")
@@ -172,23 +172,35 @@ def main() -> None:
         gbp_per_litre_nominal = usd_per_litre * gbp_per_usd
         pence_per_litre_nominal = gbp_per_litre_nominal * 100.0
 
-        period = month_key(d)
         cpih_val = cpih.get(period)
         if cpih_val is None or cpih_val == 0:
-            # fallback: use earliest available CPIH month (keeps early history)
-            earliest_period = sorted(cpih.keys())[0]
-            cpih_val = cpih[earliest_period]
-            missing_cpih += 1  # still count it so we know we fell back
+            # fallback: use most recent earlier CPIH month (carry-forward)
+            cpih_periods = sorted(cpih.keys())  # YYYY-MM strings sort correctly
+            i = bisect_right(cpih_periods, period) - 1
+            if i < 0:
+                # nothing earlier exists; use earliest as absolute last resort
+                cpih_val = cpih[cpih_periods[0]]
+            else:
+                cpih_val = cpih[cpih_periods[i]]
+            missing_cpih += 1
 
         pence_per_litre_real = pence_per_litre_nominal * (base_cpih / cpih_val)
 
         out_rows.append(
             {
+                # ✅ SOURCE OF TRUTH: oil observation date (daily)
                 "date": d,
+
                 "inputs": {
+                    # ✅ Explicit contract: oil date + oil month
+                    "oil_date": d,
+                    "oil_period": period,  # YYYY-MM
+
                     "usd_per_litre_wholesale_proxy": usd_per_litre,
                     "usd_per_gbp": usd_per_gbp,
                     "gbp_per_usd": gbp_per_usd,
+
+                    # CPIH used (month + value)
                     "cpih_period": period,
                     "cpih_index": cpih_val,
                     "cpih_base_period": base_period,
