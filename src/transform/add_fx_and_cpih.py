@@ -175,8 +175,10 @@ def main() -> None:
         period = month_key(d)
         cpih_val = cpih.get(period)
         if cpih_val is None or cpih_val == 0:
-            missing_cpih += 1
-            continue
+            # fallback: use earliest available CPIH month (keeps early history)
+            earliest_period = sorted(cpih.keys())[0]
+            cpih_val = cpih[earliest_period]
+            missing_cpih += 1  # still count it so we know we fell back
 
         pence_per_litre_real = pence_per_litre_nominal * (base_cpih / cpih_val)
 
