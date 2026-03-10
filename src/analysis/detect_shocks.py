@@ -3,8 +3,9 @@ from pathlib import Path
 
 import pandas as pd
 
-INPUT_FILE = Path("data/sample/heating_oil_gbp_real.ndjson")
-OUTPUT_FILE = Path("data/sample/heating_oil_shocks.csv")
+ROOT = Path(__file__).resolve().parents[2]
+INPUT_FILE = ROOT / "data" / "sample" / "heating_oil_gbp_real.ndjson"
+OUTPUT_FILE = ROOT / "data" / "sample" / "heating_oil_shocks.csv"
 
 REAL_COL = "derived.pence_per_litre_real"
 
@@ -18,7 +19,6 @@ MOM_SIGMA_MULT = 2.5             # MoM must exceed this many rolling std devs
 
 YOY_ABS_PCT_THRESHOLD = 25.0     # absolute YoY move
 YOY_SIGMA_MULT = 2.0             # YoY must exceed this many rolling std devs
-
 
 def load_ndjson(path: Path) -> pd.DataFrame:
     rows = []

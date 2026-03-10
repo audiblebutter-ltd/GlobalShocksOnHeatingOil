@@ -3,6 +3,8 @@ import os
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
+import os
+os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"
 
 import boto3
 
