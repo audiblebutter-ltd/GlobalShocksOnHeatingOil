@@ -4,17 +4,18 @@ data/raw/
 # CSV files
 *.csv
 
-# Raw / downloaded datasets (never commit)
-data/raw/
-
-# Generated outputs (never commit)
+# Generated outputs
 data/sample/*.ndjson
 data/sample/*.json
 data/sample/*.parquet
+data/sample/*shocks*.csv
+
+# Keep required sample input
+!data/sample/heating_oil_gbp_real.ndjson
 
 # Generated lookup datasets
 data/lookups/
 
-# data sets
+# Generated reports
 reports/*.png
 reports/*.md
