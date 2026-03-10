@@ -16,7 +16,5 @@ data/sample/*.parquet
 data/lookups/
 
 # data sets
-data/sample/*.ndjson
-data/sample/*shocks*.csv
 reports/*.png
 reports/*.md
